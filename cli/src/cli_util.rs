@@ -137,6 +137,7 @@ use jj_lib::working_copy;
 use jj_lib::working_copy::CheckoutStats;
 use jj_lib::working_copy::LockedWorkingCopy;
 use jj_lib::working_copy::SnapshotOptions;
+use jj_lib::working_copy::SnapshotResult;
 use jj_lib::working_copy::SnapshotStats;
 use jj_lib::working_copy::UntrackedReason;
 use jj_lib::working_copy::WorkingCopy;
@@ -458,42 +459,51 @@ impl CommandHelper {
     /// Loads workspace and repo, then snapshots the working copy if allowed.
     #[instrument(skip(self, ui))]
     pub async fn workspace_helper(&self, ui: &Ui) -> Result<WorkspaceCommandHelper, CommandError> {
-        let (workspace_command, stats) = self.workspace_helper_with_stats(ui).await?;
-        print_snapshot_stats(ui, &stats, workspace_command.env().path_converter())?;
+        let (workspace_command, maybe_snapshot_result) =
+            self.workspace_helper_with_result(ui).await?;
+        print_maybe_snapshot_result(
+            ui,
+            &maybe_snapshot_result,
+            workspace_command.env().path_converter(),
+        )?;
         Ok(workspace_command)
     }
 
     /// Loads workspace and repo, then snapshots the working copy if allowed and
-    /// returns the SnapshotStats.
+    /// returns the SnapshotResult.
     ///
     /// Note that unless you have a good reason not to do so, you should always
-    /// call [`print_snapshot_stats`] with the [`SnapshotStats`] returned by
-    /// this function to present possible untracked files to the user.
+    /// call [`print_maybe_snapshot_result`] with the [`Option<SnapshotResult>`]
+    /// returned by this function to present possible untracked files to the
+    /// user.
     #[instrument(skip(self, ui))]
-    pub async fn workspace_helper_with_stats(
+    pub async fn workspace_helper_with_result(
         &self,
         ui: &Ui,
-    ) -> Result<(WorkspaceCommandHelper, SnapshotStats), CommandError> {
+    ) -> Result<(WorkspaceCommandHelper, Option<SnapshotResult>), CommandError> {
         let mut workspace_command = self.workspace_helper_no_snapshot(ui).await?;
 
-        let (workspace_command, stats) = match workspace_command.maybe_snapshot_impl(ui).await {
-            Ok(stats) => (workspace_command, stats),
-            Err(SnapshotWorkingCopyError::Command(err)) => return Err(err),
-            Err(SnapshotWorkingCopyError::StaleWorkingCopy(err)) => {
-                let auto_update_stale = self.settings().get_bool("snapshot.auto-update-stale")?;
-                if !auto_update_stale {
-                    return Err(err);
-                }
+        let (workspace_command, maybe_snapshot_result) = {
+            match workspace_command.maybe_snapshot_impl(ui).await {
+                Ok(maybe_snapshot_result) => (workspace_command, maybe_snapshot_result),
+                Err(SnapshotWorkingCopyError::Command(err)) => return Err(err),
+                Err(SnapshotWorkingCopyError::StaleWorkingCopy(err)) => {
+                    let auto_update_stale =
+                        self.settings().get_bool("snapshot.auto-update-stale")?;
+                    if !auto_update_stale {
+                        return Err(err);
+                    }
 
-                // We detected the working copy was stale and the client is configured to
-                // auto-update-stale, so let's do that now. We need to do it up here, not at a
-                // lower level (e.g. inside snapshot_working_copy()) to avoid recursive locking
-                // of the working copy.
-                self.recover_stale_working_copy(ui).await?
+                    // We detected the working copy was stale and the client is configured to
+                    // auto-update-stale, so let's do that now. We need to do it up here, not at a
+                    // lower level (e.g. inside snapshot_working_copy()) to avoid recursive locking
+                    // of the working copy.
+                    self.recover_stale_working_copy(ui).await?
+                }
             }
         };
 
-        Ok((workspace_command, stats))
+        Ok((workspace_command, maybe_snapshot_result))
     }
 
     /// Loads workspace and repo, but never snapshots the working copy. Most
@@ -580,12 +590,13 @@ impl CommandHelper {
     }
 
     /// Note that unless you have a good reason not to do so, you should always
-    /// call [`print_snapshot_stats`] with the [`SnapshotStats`] returned by
-    /// this function to present possible untracked files to the user.
+    /// call [`print_maybe_snapshot_result`] with the [`Option<SnapshotResult>`]
+    /// returned by this function to present possible untracked files to the
+    /// user.
     pub async fn recover_stale_working_copy(
         &self,
         ui: &Ui,
-    ) -> Result<(WorkspaceCommandHelper, SnapshotStats), CommandError> {
+    ) -> Result<(WorkspaceCommandHelper, Option<SnapshotResult>), CommandError> {
         let workspace = self.load_workspace()?;
         let op_id = workspace.working_copy().operation_id();
 
@@ -599,7 +610,7 @@ impl CommandHelper {
                 // operation, then merge the divergent operations. The wc_commit_id of the
                 // merged repo wouldn't change because the old one wins, but it's probably
                 // fine if we picked the new wc_commit_id.
-                let stale_stats = workspace_command
+                let stale_result = workspace_command
                     .snapshot_working_copy(ui)
                     .await
                     .map_err(|err| err.into_command_error())?;
@@ -630,7 +641,7 @@ impl CommandHelper {
                     }
                     WorkingCopyFreshness::WorkingCopyStale
                     | WorkingCopyFreshness::SiblingOperation => {
-                        let stats = update_stale_working_copy(
+                        let checkout_stats = update_stale_working_copy(
                             locked_ws,
                             repo.op_id().clone(),
                             &stale_wc_commit,
@@ -641,7 +652,7 @@ impl CommandHelper {
                             ui,
                             Some(&stale_wc_commit),
                             &desired_wc_commit,
-                            &stats,
+                            &checkout_stats,
                         )?;
                         writeln!(
                             ui.status(),
@@ -655,25 +666,26 @@ impl CommandHelper {
                 // will also be imported if it was updated after the working
                 // copy became stale. The result wouldn't be ideal, but there
                 // should be no data loss at least.
-                let fresh_stats = workspace_command
+                let fresh_result = workspace_command
                     .maybe_snapshot_impl(ui)
                     .await
                     .map_err(|err| err.into_command_error())?;
-                let merged_stats = {
-                    let SnapshotStats {
-                        mut untracked_paths,
-                        ignored_paths,
-                        mut newly_tracked_paths,
-                    } = stale_stats;
-                    untracked_paths.extend(fresh_stats.untracked_paths);
-                    newly_tracked_paths.extend(fresh_stats.newly_tracked_paths);
-                    SnapshotStats {
-                        untracked_paths,
-                        ignored_paths,
-                        newly_tracked_paths,
+                let merged_result = {
+                    if let Some(fresh_result) = fresh_result {
+                        let new_tree = fresh_result.new_tree;
+                        let mut stats = stale_result.map_or(SnapshotStats::default(), |r| r.stats);
+                        stats
+                            .untracked_paths
+                            .extend(fresh_result.stats.untracked_paths);
+                        stats
+                            .newly_tracked_paths
+                            .extend(fresh_result.stats.newly_tracked_paths);
+                        Some(SnapshotResult { new_tree, stats })
+                    } else {
+                        stale_result
                     }
                 };
-                Ok((workspace_command, merged_stats))
+                Ok((workspace_command, merged_result))
             }
             Err(e @ OpStoreError::ObjectNotFound { .. }) => {
                 writeln!(
@@ -683,10 +695,10 @@ impl CommandHelper {
                 )?;
 
                 let mut workspace_command = self.workspace_helper_no_snapshot(ui).await?;
-                let stats = workspace_command
+                let snapshot_result = workspace_command
                     .create_and_check_out_recovery_commit(ui)
                     .await?;
-                Ok((workspace_command, stats))
+                Ok((workspace_command, snapshot_result))
             }
             Err(e) => Err(e.into()),
         }
@@ -1216,15 +1228,16 @@ impl WorkspaceCommandHelper {
     }
 
     /// Note that unless you have a good reason not to do so, you should always
-    /// call [`print_snapshot_stats`] with the [`SnapshotStats`] returned by
-    /// this function to present possible untracked files to the user.
+    /// call [`print_maybe_snapshot_result`] with the [`Option<SnapshotResult>`]
+    /// returned by this function to present possible untracked files to the
+    /// user.
     #[instrument(skip_all)]
     async fn maybe_snapshot_impl(
         &mut self,
         ui: &Ui,
-    ) -> Result<SnapshotStats, SnapshotWorkingCopyError> {
+    ) -> Result<Option<SnapshotResult>, SnapshotWorkingCopyError> {
         if !self.may_snapshot_working_copy {
-            return Ok(SnapshotStats::default());
+            return Ok(None);
         }
 
         // Acquire git import/export lock once for the entire import/snapshot/export
@@ -1269,7 +1282,7 @@ impl WorkspaceCommandHelper {
         // pointing to the new working-copy commit might not be exported.
         // In that situation, the ref would be conflicted anyway, so export
         // failure is okay.
-        let stats = self.snapshot_working_copy(ui).await?;
+        let result = self.snapshot_working_copy(ui).await?;
 
         // import_git_refs() can rebase the working-copy commit.
         #[cfg(feature = "git")]
@@ -1278,7 +1291,7 @@ impl WorkspaceCommandHelper {
                 .await
                 .map_err(snapshot_command_error)?;
         }
-        Ok(stats)
+        Ok(result)
     }
 
     /// Snapshots the working copy if allowed, and imports Git refs if the
@@ -1288,11 +1301,12 @@ impl WorkspaceCommandHelper {
     #[instrument(skip_all)]
     pub async fn maybe_snapshot(&mut self, ui: &Ui) -> Result<bool, CommandError> {
         let op_id_before = self.repo().op_id().clone();
-        let stats = self
+        let maybe_snapshot_result = self
             .maybe_snapshot_impl(ui)
             .await
             .map_err(|err| err.into_command_error())?;
-        print_snapshot_stats(ui, &stats, self.env().path_converter())?;
+
+        print_maybe_snapshot_result(ui, &maybe_snapshot_result, self.env().path_converter())?;
         let op_id_after = self.repo().op_id();
         Ok(op_id_before != *op_id_after)
     }
@@ -1455,7 +1469,7 @@ impl WorkspaceCommandHelper {
     async fn create_and_check_out_recovery_commit(
         &mut self,
         ui: &Ui,
-    ) -> Result<SnapshotStats, CommandError> {
+    ) -> Result<Option<SnapshotResult>, CommandError> {
         self.check_working_copy_writable()?;
 
         let workspace_name = self.workspace_name().to_owned();
@@ -2009,7 +2023,7 @@ to the current parents may contain changes from multiple commits.
     async fn snapshot_working_copy(
         &mut self,
         ui: &Ui,
-    ) -> Result<SnapshotStats, SnapshotWorkingCopyError> {
+    ) -> Result<Option<SnapshotResult>, SnapshotWorkingCopyError> {
         let workspace_name = self.workspace_name().to_owned();
         let repo = self.repo().clone();
         let auto_tracking_matcher = self
@@ -2031,11 +2045,11 @@ to the current parents may contain changes from multiple commits.
         else {
             // If the workspace has been deleted, it's unclear what to do, so we just skip
             // committing the working copy.
-            return Ok(SnapshotStats::default());
+            return Ok(None);
         };
 
         self.user_repo = ReadonlyUserRepo::new(repo);
-        let (new_tree, stats) = {
+        let snapshot_result = {
             let mut options = options;
             let progress = crate::progress::snapshot_progress(ui);
             options.progress = progress.as_ref().map(|x| x as _);
@@ -2045,7 +2059,8 @@ to the current parents may contain changes from multiple commits.
                 .await
                 .map_err(snapshot_command_error)?
         };
-        if new_tree.tree_ids_and_labels() != wc_commit.tree().tree_ids_and_labels() {
+        if snapshot_result.new_tree.tree_ids_and_labels() != wc_commit.tree().tree_ids_and_labels()
+        {
             let mut tx = start_repo_transaction(
                 &self.user_repo.repo,
                 &workspace_name,
@@ -2055,7 +2070,7 @@ to the current parents may contain changes from multiple commits.
             let mut_repo = tx.repo_mut();
             let commit = mut_repo
                 .rewrite_commit(&wc_commit)
-                .set_tree(new_tree.clone())
+                .set_tree(snapshot_result.new_tree.clone())
                 .write()
                 .await
                 .map_err(snapshot_command_error)?;
@@ -2096,7 +2111,8 @@ to the current parents may contain changes from multiple commits.
 
         #[cfg(feature = "git")]
         if self.working_copy_shared_with_git
-            && let Ok(resolved_tree) = new_tree
+            && let Ok(resolved_tree) = snapshot_result
+                .new_tree
                 .trees()
                 .await
                 .map_err(snapshot_command_error)?
@@ -2129,7 +2145,7 @@ to the current parents may contain changes from multiple commits.
                 .await
                 .map_err(snapshot_command_error)?;
         }
-        Ok(stats)
+        Ok(Some(snapshot_result))
     }
 
     async fn update_working_copy(
@@ -3056,6 +3072,12 @@ fn build_untracked_reason_message(reason: &UntrackedReason) -> Option<String> {
     }
 }
 
+pub fn snapshot_stats_from_maybe_result(
+    maybe_snapshot_result: Option<SnapshotResult>,
+) -> SnapshotStats {
+    maybe_snapshot_result.map_or(SnapshotStats::default(), |r| r.stats)
+}
+
 /// Print a warning to the user, listing untracked files that he may care about
 pub fn print_untracked_files(
     ui: &Ui,
@@ -3079,23 +3101,38 @@ pub fn print_untracked_files(
     Ok(())
 }
 
-pub fn print_snapshot_stats(
+pub fn print_maybe_snapshot_result(
     ui: &Ui,
-    stats: &SnapshotStats,
+    maybe_result: &Option<SnapshotResult>,
     path_converter: &RepoPathUiConverter,
 ) -> io::Result<()> {
-    print_untracked_files(ui, &stats.untracked_paths, path_converter)?;
+    if let Some(result) = maybe_result.as_ref() {
+        print_snapshot_result(ui, result, path_converter)
+    } else {
+        Ok(())
+    }
+}
 
-    let large_files_sizes = stats
-        .untracked_paths
-        .values()
-        .filter_map(|reason| match reason {
-            UntrackedReason::FileTooLarge { size, .. } => Some(size),
-            UntrackedReason::FileNotAutoTracked => None,
-        });
+pub fn print_snapshot_result(
+    ui: &Ui,
+    result: &SnapshotResult,
+    path_converter: &RepoPathUiConverter,
+) -> io::Result<()> {
+    print_untracked_files(ui, &result.stats.untracked_paths, path_converter)?;
+
+    let large_files_sizes =
+        result
+            .stats
+            .untracked_paths
+            .values()
+            .filter_map(|reason| match reason {
+                UntrackedReason::FileTooLarge { size, .. } => Some(size),
+                UntrackedReason::FileNotAutoTracked => None,
+            });
     if let Some(size) = large_files_sizes.max() {
         print_large_file_hint(ui, *size, None)?;
     }
+
     Ok(())
 }
 
