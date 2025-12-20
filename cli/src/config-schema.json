@@ -300,6 +300,11 @@
                             "committer-date-"
                         ]
                     }
+                },
+                "show-newly-tracked": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Specify if jj should show when files starts to get tracked by the snapshot"
                 }
             }
         },
