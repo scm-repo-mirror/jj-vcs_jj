@@ -522,6 +522,11 @@
                     "type": "boolean",
                     "description": "Whether to colocate the working copy with the git repository",
                     "default": true
+                },
+                "push-single-ref": {
+                    "type": "boolean",
+                    "description": "Whether to push multiple refs with sequential git push operations",
+                    "default": false
                 }
             }
         },

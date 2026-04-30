@@ -6249,6 +6249,7 @@ fn test_push_updates_with_options() -> TestResult {
                 "merge_request.create".to_owned(),
                 "merge_request.draft".to_owned(),
             ],
+            push_single_ref: false,
         },
     )?;
 

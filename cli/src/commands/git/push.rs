@@ -580,6 +580,7 @@ pub async fn cmd_git_push(
     let git_settings = GitSettings::from_settings(tx.settings())?;
     let options = GitPushOptions {
         remote_push_options: args.option.clone(),
+        push_single_ref: tx.settings().get_bool("git.push-single-ref")?,
     };
     let push_stats = git::push_refs(
         tx.repo_mut(),

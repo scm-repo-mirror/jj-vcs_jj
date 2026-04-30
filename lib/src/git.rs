@@ -202,6 +202,13 @@ impl GitPushStats {
     pub fn some_exported(&self) -> bool {
         self.pushed.len() > self.unexported_bookmarks.len()
     }
+
+    pub fn merge(&mut self, other: Self) {
+        self.pushed.extend(other.pushed);
+        self.rejected.extend(other.rejected);
+        self.remote_rejected.extend(other.remote_rejected);
+        self.unexported_bookmarks.extend(other.unexported_bookmarks);
+    }
 }
 
 /// Newtype to look up `HashMap` entry by key of shorter lifetime.
@@ -3072,6 +3079,8 @@ pub struct GitRefUpdate {
 pub struct GitPushOptions {
     /// `--push-option` arguments.
     pub remote_push_options: Vec<String>,
+    /// don't push multiple refs at once
+    pub push_single_ref: bool,
 }
 
 /// Pushes the specified refs and updates the repo view accordingly.
@@ -3234,7 +3243,15 @@ pub fn push_updates(
         .map(|full_refspec| RefToPush::new(full_refspec, &qualified_remote_refs_expected_locations))
         .collect();
 
-    let mut push_stats = git_ctx.spawn_push(remote_name, &refs_to_push, callback, options)?;
+    let mut push_stats = if options.push_single_ref {
+        let mut stats = GitPushStats::default();
+        for reference in refs_to_push {
+            stats.merge(git_ctx.spawn_push(remote_name, &[reference], callback, options)?);
+        }
+        stats
+    } else {
+        git_ctx.spawn_push(remote_name, &refs_to_push, callback, options)?
+    };
     push_stats.pushed.sort();
     push_stats.rejected.sort();
     push_stats.remote_rejected.sort();

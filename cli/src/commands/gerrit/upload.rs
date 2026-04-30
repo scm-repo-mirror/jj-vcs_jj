@@ -414,6 +414,7 @@ pub async fn cmd_gerrit_upload(
     // Do this first because the validation is cheap.
     let push_options = GitPushOptions {
         remote_push_options: push_options(args)?,
+        push_single_ref: false,
     };
 
     let mut workspace_command = command.workspace_helper(ui).await?;
