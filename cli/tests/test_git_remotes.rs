@@ -706,7 +706,6 @@ fn test_git_remote_named_git() {
     let output = work_dir.run_jj(["log", "-rmain@git", "-Tbookmarks"]);
     insta::assert_snapshot!(output, @"
     @  main
-    │
     ~
     [EOF]
     ");
@@ -749,7 +748,6 @@ fn test_git_remote_named_git() {
     let output = work_dir.run_jj(["log", "-rmain@git", "-Tbookmarks"]);
     insta::assert_snapshot!(output, @"
     ○  main
-    │
     ~
     [EOF]
     ");
@@ -824,7 +822,6 @@ fn test_git_remote_with_slashes() {
     let output = work_dir.run_jj(["log", "-rmain@git", "-Tbookmarks"]);
     insta::assert_snapshot!(output, @"
     ○  main
-    │
     ~
     [EOF]
     ");

@@ -16,7 +16,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### New features
 
+* The final `~` shown in `jj log` now respects `ui.log-synthetic-elided-nodes`
+  and uses the `log_node` template.
+
 ### Fixed bugs
+
+* `jj log --reversed` now correctly shows elided nodes.
 
 ## [0.41.0] - 2026-05-06
 
