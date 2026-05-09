@@ -31,9 +31,16 @@ fn test_show() {
     work_dir.write_file("file3", "d\n");
 
     // Can print the contents of a file in a commit
-    let output = work_dir.run_jj(["file", "show", "file1", "-r", "@-"]);
-    insta::assert_snapshot!(output, @"
+    let output = work_dir
+        .run_jj(["file", "show", "file1", "-r", "@-"])
+        .normalize_backslash();
+    insta::assert_snapshot!(output, @r"
     a
+    [EOF]
+    ------- stderr -------
+    Auto-tracking 2 new files:
+    A file3
+    A dir/file2
     [EOF]
     ");
 
@@ -147,16 +154,15 @@ fn test_show_symlink() -> TestResult {
 
     // Can print multiple files with template
     let template = r#""--- " ++ path ++ " [" ++ file_type ++ "]\n""#;
-    let output = work_dir.run_jj(["file", "show", "-T", template, "."]);
-    insta::assert_snapshot!(output, @"
+    let output = work_dir
+        .run_jj(["file", "show", "-T", template, "."])
+        .normalize_backslash();
+    insta::assert_snapshot!(output.stdout, @r"
     --- dir/file2 [file]
     c
     --- file1 [file]
     a
     --- symlink1 [symlink]
-    [EOF]
-    ------- stderr -------
-    Warning: Path 'symlink1' exists but is not a file
     [EOF]
     ");
     Ok(())

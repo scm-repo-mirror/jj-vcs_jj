@@ -77,7 +77,7 @@ fn test_show_basic() {
     work_dir.write_file("file3", "foo\n");
 
     let output = work_dir.run_jj(["show"]);
-    insta::assert_snapshot!(output, @"
+    insta::assert_snapshot!(output, @r"
     Commit ID: 92e687faa4e5b681937f5a9c47feaa33e6b4892c
     Change ID: rlvkpnrzqnoowoytxnquwvuryrwnrmlp
     Author   : Test User <test.user@example.com> (2001-02-03 08:05:09)
@@ -90,6 +90,10 @@ fn test_show_basic() {
             2: bar
        2    3: baz quxquux
     Modified regular file file3 (file1 => file3):
+    [EOF]
+    ------- stderr -------
+    Auto-tracking 1 new file:
+    A file3
     [EOF]
     ");
 
@@ -293,8 +297,12 @@ fn test_show_with_template_no_patch() {
 
     let output = work_dir.run_jj(["show", "--no-patch", "-T", "description"]);
 
-    insta::assert_snapshot!(output, @"
+    insta::assert_snapshot!(output, @r"
     a new commit
+    [EOF]
+    ------- stderr -------
+    Auto-tracking 1 new file:
+    A file1
     [EOF]
     ");
 }
@@ -309,7 +317,7 @@ fn test_show_with_no_patch() {
 
     let output = work_dir.run_jj(["show", "--no-patch"]);
 
-    insta::assert_snapshot!(output, @"
+    insta::assert_snapshot!(output, @r"
     Commit ID: 86d5fa72f4ecc6d51478941ee9160db9c52b842e
     Change ID: rlvkpnrzqnoowoytxnquwvuryrwnrmlp
     Author   : Test User <test.user@example.com> (2001-02-03 08:05:08)
@@ -317,6 +325,10 @@ fn test_show_with_no_patch() {
 
         a new commit
 
+    [EOF]
+    ------- stderr -------
+    Auto-tracking 1 new file:
+    A file1
     [EOF]
     ");
 }
