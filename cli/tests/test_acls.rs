@@ -39,7 +39,7 @@ fn test_diff() {
     SecretBackend::adopt_git_repo(work_dir.root());
 
     let output = work_dir.run_jj(["diff", "--color-words"]);
-    insta::assert_snapshot!(output.normalize_backslash(), @"
+    insta::assert_snapshot!(output.normalize_backslash(), @r"
     Modified regular file a-first:
        1    1: foobar
     Access denied to added-secret: No access
@@ -48,6 +48,10 @@ fn test_diff() {
     Access denied to modified-secret: No access
     Modified regular file z-last:
        1    1: foobar
+    [EOF]
+    ------- stderr -------
+    Auto-tracking 1 new file:
+    A added-secret
     [EOF]
     ");
     let output = work_dir.run_jj(["diff", "--summary"]);
@@ -115,10 +119,16 @@ fn test_file_list_show() {
 
     // "file list" should just work since it doesn't access file content
     let output = work_dir.run_jj(["file", "list"]);
-    insta::assert_snapshot!(output, @"
+    insta::assert_snapshot!(output, @r"
     a-first
     secret
     z-last
+    [EOF]
+    ------- stderr -------
+    Auto-tracking 3 new files:
+    A a-first
+    A secret
+    A z-last
     [EOF]
     ");
 
