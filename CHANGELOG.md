@@ -16,6 +16,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### New features
 
+* Add `git.push-single-ref` setting to push multiple refs with sequential git
+  push commands rather than updating all at once. Useful for some remotes with
+  restrictive history rewrite policies.
+
 ### Fixed bugs
 
 * `jj bookmark forget` no longer prints `Forgot N local bookmarks.` when no
