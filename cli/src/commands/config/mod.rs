@@ -13,6 +13,7 @@
 // limitations under the License.
 
 mod edit;
+mod gc;
 mod get;
 mod list;
 mod path;
@@ -28,6 +29,8 @@ use tracing::instrument;
 
 use self::edit::ConfigEditArgs;
 use self::edit::cmd_config_edit;
+use self::gc::ConfigGcArgs;
+use self::gc::cmd_config_gc;
 use self::get::ConfigGetArgs;
 use self::get::cmd_config_get;
 use self::list::ConfigListArgs;
@@ -165,6 +168,7 @@ pub(crate) enum ConfigCommand {
     Set(ConfigSetArgs),
     #[command(visible_alias("u"))]
     Unset(ConfigUnsetArgs),
+    Gc(ConfigGcArgs),
 }
 
 #[instrument(skip_all)]
@@ -180,5 +184,6 @@ pub(crate) async fn cmd_config(
         ConfigCommand::Path(args) => cmd_config_path(ui, command, args).await,
         ConfigCommand::Set(args) => cmd_config_set(ui, command, args).await,
         ConfigCommand::Unset(args) => cmd_config_unset(ui, command, args).await,
+        ConfigCommand::Gc(args) => cmd_config_gc(ui, command, args).await,
     }
 }

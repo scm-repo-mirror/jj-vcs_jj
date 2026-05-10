@@ -718,6 +718,7 @@ fn test_command_completion_short_name() {
     path	Print the paths to the config files
     set	Update a config file to set the given option to a given value
     unset	Update a config file to unset the given option
+    gc	Find and optionally delete repo-level config directories whose repo path no longer exists
     --repository	Path to repository to operate on
     --ignore-working-copy	Don't snapshot the working copy, and don't update it
     --no-integrate-operation	Run the command as usual but don't integrate any operations
