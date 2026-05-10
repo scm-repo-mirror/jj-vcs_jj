@@ -1879,6 +1879,8 @@ jj config path --user
 On all platforms, the user's global `jj` configurations are by default loaded in
 the following precedence order (with later configs overriding earlier ones):
 
+- `/etc/jj/config.toml`
+- `/etc/jj/conf.d/*.toml`
 - `$HOME/.jjconfig.toml`
 - `<PLATFORM_SPECIFIC>/jj/config.toml` (preferred)
 - `<PLATFORM_SPECIFIC>/jj/conf.d/*.toml`

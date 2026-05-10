@@ -294,6 +294,14 @@ impl UnresolvedConfigEnv {
         }
 
         let mut paths = vec![];
+
+        for system_config_path in ["/etc/jj/config.toml", "/etc/jj/conf.d"] {
+            let path = ConfigPath::new(system_config_path.into());
+            if path.exists() {
+                paths.push(path);
+            }
+        }
+
         let home_config_path = self.home_dir.map(|mut home_dir| {
             home_dir.push(".jjconfig.toml");
             ConfigPath::new(home_dir)
