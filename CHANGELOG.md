@@ -23,6 +23,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   extracted from the `.doc` field of the alias definition if it is a table
   with `.doc` and `.definition` properties.
 
+* Added commands `jj file edit`, `jj file set`, and `jj file delete` for editing
+  files in any revision without needing to change the working copy.
+
 ### Fixed bugs
 
 * `jj bookmark forget` no longer prints `Forgot N local bookmarks.` when no
