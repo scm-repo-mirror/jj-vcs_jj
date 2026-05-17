@@ -1109,7 +1109,7 @@ File operations
 
 * `annotate` — Show the source change for each line of the target file
 * `chmod` — Sets or removes the executable bit for paths in the repo
-* `edit` — Edit the contents of a file in a revision
+* `edit` — Open a file in the editor and save changes to the given revision
 * `list` — List files in a revision
 * `search` — Search for content in files
 * `set` — Update the contents of a file by reading from stdin
@@ -1176,7 +1176,7 @@ Unlike the POSIX `chmod`, `jj file chmod` also works on Windows, on conflicted f
 
 ## `jj file edit`
 
-Edit the contents of a file in a revision
+Start an editor on a file to amend a revision.
 
 The file is opened with the contents from the given revision. After the editor exits, the file is saved back to the revision and descendants are rebased on top of the updated commit.
 
@@ -1255,7 +1255,7 @@ This is an early version of the command. It only supports glob matching for now,
 
 ## `jj file set`
 
-Update the contents of a file by reading from stdin
+Update the contents of a file by reading from stdin.
 
 Reads the new file contents from stdin and overwrites the specified file in the given revision. Descendants are rebased on top of the rewritten commit.
 
@@ -1274,6 +1274,7 @@ Example usage:
 * `-r`, `--revision <REVSET>` — The revision to set the file in
 
   Default value: `@`
+* `--restore-descendants` — Preserve the content (not the diff) when rebasing descendants
 
 
 
