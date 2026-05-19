@@ -2173,7 +2173,6 @@ Note that you can create a merge commit by specifying multiple revisions as argu
    Example: `jj new --insert-after A --insert-before D`:
 
    ```text
-
        D            D
        |           / \
        C          |   C
