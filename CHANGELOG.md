@@ -107,6 +107,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * `JJ_PAGER` can now override the `ui.pager` config, matching `JJ_EDITOR` for
   callers that need a jj-specific environment override.
 
+* `jj gerrit upload` now supports the `-o` flag, which works like `git push -o`.
+
 ### Fixed bugs
 
 * Improving consistency with `git` handling of `.gitignore`, including `/`
