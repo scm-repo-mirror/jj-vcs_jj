@@ -270,11 +270,10 @@ unavoidable.
 
 ### Garbage collection
 
-We could, in the future, add a `gc` command to garbage-collect configs to
-deleted repo configs. However, there are some things to consider before doing
-so:
-* Each config would likely be very small, so cleaning it up may have limited
-  benefit.
+There is `jj config gc` command to delete configuration for repos that 
+are deleted/moved. The command asks for user approval because of the 
+following considerations:
+
 * It is impossible to distinguish "deleted" from "moved".
 * If you have something like a chroot or a dual boot where you share the
   config, you may have references to config IDs with a different path.

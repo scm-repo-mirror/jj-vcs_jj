@@ -117,6 +117,23 @@ fn update_metadata(config_dir: &Path, metadata: &ConfigMetadata) -> Result<(), S
     Ok(())
 }
 
+/// Reads and decodes the `metadata.binpb` file in the given per-repo config
+/// directory.
+pub fn read_metadata(config_dir: &Path) -> Result<ConfigMetadata, SecureConfigError> {
+    let metadata_path = config_dir.join(METADATA_FILE);
+    let bytes = fs::read(&metadata_path).context(&metadata_path)?;
+    Ok(ConfigMetadata::decode(bytes.as_slice())?)
+}
+
+/// Returns the repo/workspace path stored in the metadata, if present.
+pub fn metadata_path(metadata: &ConfigMetadata) -> Result<Option<PathBuf>, BadPathEncoding> {
+    metadata
+        .path
+        .as_deref()
+        .map(|b| path_from_bytes(b).map(Path::to_path_buf))
+        .transpose()
+}
+
 impl SecureConfig {
     /// Creates a secure config.
     fn new(

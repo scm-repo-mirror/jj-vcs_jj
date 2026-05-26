@@ -23,6 +23,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### New features
 
+* `jj config gc` will delete configuration of deleted/moved repos from ~/.config/jj/repos folder. [#9362](https://github.com/jj-vcs/jj/issues/9362)
+
 * Shell completions now surface descriptions for custom aliases,
   revset-aliases, template-aliases, and fileset-aliases. Descriptions are
   extracted from the `.doc` field of the alias definition if it is a table

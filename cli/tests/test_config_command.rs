@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use std::env::join_paths;
+use std::path::Path;
 use std::path::PathBuf;
 
 use indoc::indoc;
@@ -1865,4 +1866,115 @@ fn test_config_author_change_warning_root_env() {
 fn find_stdout_lines(keyname_pattern: &str, stdout: &str) -> String {
     let key_line_re = Regex::new(&format!(r"(?m)^{keyname_pattern} = .*\n")).unwrap();
     key_line_re.find_iter(stdout).map(|m| m.as_str()).collect()
+}
+
+/// Set up a per-repo config directory by running `config edit --repo` with a
+/// no-op fake editor. Returns the path to the per-repo config directory
+/// (e.g. `~/.config/jj/repos/<config_id>/`).
+fn create_repo_with_config(test_env: &mut TestEnvironment, repo_name: &str) -> TestResult<PathBuf> {
+    test_env.set_up_fake_editor();
+    test_env
+        .run_jj_in(".", ["git", "init", repo_name])
+        .success();
+    test_env
+        .work_dir(repo_name)
+        .run_jj(["config", "edit", "--repo"])
+        .success();
+    let repos_root = test_env.home_dir().join(".config/jj/repos");
+    let mut entries: Vec<_> = std::fs::read_dir(&repos_root)?
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .filter(|p| p.is_dir())
+        .collect_vec();
+    entries.sort();
+    // Find the config dir whose metadata points at this repo.
+    let repo_jj = test_env.env_root().join(repo_name).join(".jj/repo");
+    let repo_jj = dunce::canonicalize(&repo_jj).unwrap_or(repo_jj);
+    for entry in entries {
+        let id_file = entry.join("metadata.binpb");
+        let bytes = std::fs::read(&id_file)?;
+        // Cheap substring check — the metadata stores the path bytes verbatim.
+        if bytes.windows(repo_jj.as_os_str().len()).any(|w| {
+            std::str::from_utf8(w)
+                .map(|s| Path::new(s) == repo_jj.as_path())
+                .unwrap_or(false)
+        }) {
+            return Ok(entry);
+        }
+    }
+    panic!("no per-repo config dir found for {repo_name}");
+}
+
+#[test]
+fn test_config_gc_no_repos_dir() {
+    let test_env = TestEnvironment::default();
+    // No repo config dir created at all.
+    let output = test_env.run_jj_in(".", ["config", "gc"]);
+    insta::assert_snapshot!(output, @r"
+    Missing repo configs (repo path no longer exists):
+      (none)
+    [EOF]
+    ");
+}
+
+#[test]
+fn test_config_gc_all_existing() -> TestResult {
+    let mut test_env = TestEnvironment::default();
+    create_repo_with_config(&mut test_env, "repo")?;
+
+    let output = test_env.run_jj_in(".", ["config", "gc"]);
+    insta::assert_snapshot!(output, @r"
+    Missing repo configs (repo path no longer exists):
+      (none)
+    [EOF]
+    ");
+    Ok(())
+}
+
+#[test]
+fn test_config_gc_missing_default_no() -> TestResult {
+    let mut test_env = TestEnvironment::default();
+    let config_dir = create_repo_with_config(&mut test_env, "repo")?;
+    // Remove the repo so its metadata path no longer exists.
+    std::fs::remove_dir_all(test_env.env_root().join("repo"))?;
+
+    // Non-interactive: the prompt auto-answers with the default ("no").
+    let output = test_env.run_jj_in(".", ["config", "gc"]);
+    insta::assert_snapshot!(output, @r"
+    Missing repo configs (repo path no longer exists):
+      $TEST_ENV/home/.config/jj/repos/8e4fac809cbb3b162c95
+        path: $TEST_ENV/repo/.jj/repo
+    [EOF]
+    ------- stderr -------
+    Delete 1 missing repo config directories? (yN): n
+    Aborted; nothing was deleted.
+    [EOF]
+    ");
+    // The directory should still be there.
+    assert!(config_dir.is_dir());
+    Ok(())
+}
+
+#[test]
+fn test_config_gc_missing_confirmed() -> TestResult {
+    let mut test_env = TestEnvironment::default();
+    let config_dir = create_repo_with_config(&mut test_env, "repo")?;
+    std::fs::remove_dir_all(test_env.env_root().join("repo"))?;
+
+    let output = test_env.work_dir("").run_jj_with(|cmd| {
+        force_interactive(cmd)
+            .args(["config", "gc"])
+            .write_stdin("y\n")
+    });
+    insta::assert_snapshot!(output, @r"
+    Missing repo configs (repo path no longer exists):
+      $TEST_ENV/home/.config/jj/repos/8e4fac809cbb3b162c95
+        path: $TEST_ENV/repo/.jj/repo
+    [EOF]
+    ------- stderr -------
+    Delete 1 missing repo config directories? (yN): Deleted $TEST_ENV/home/.config/jj/repos/8e4fac809cbb3b162c95
+    [EOF]
+    ");
+    assert!(!config_dir.exists());
+    Ok(())
 }
